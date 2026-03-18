@@ -1,18 +1,32 @@
 <script>
   import { onMount } from "svelte";
+  import { authStore } from "../lib/authStore.ts";
 
   let notes = $state([]);
   let newNote = $state("");
   let loading = $state(false);
   let error = $state("");
+  let user = $state(null);
+
+  // Subscribe to auth store
+  authStore.subscribe((state) => {
+    user = state.user;
+  });
 
   async function fetchNotes() {
     try {
-      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || "";
-      const res = await fetch(`${backendUrl}/notes`);
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || "http://localhost:3000";
+      const res = await fetch(`${backendUrl}/api/notes`, {
+        credentials: "include"
+      });
 
       if (res.ok) {
         notes = await res.json();
+      } else if (res.status === 401) {
+        error = "Please log in to view notes";
+        setTimeout(() => {
+          window.location.href = "/";
+        }, 2000);
       } else {
         error = "Failed to fetch notes";
       }
@@ -29,11 +43,11 @@
     error = "";
 
     try {
-      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || "";
-      const res = await fetch(`${backendUrl}/notes`, {
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || "http://localhost:3000";
+      const res = await fetch(`${backendUrl}/api/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-
+        credentials: "include",
         body: JSON.stringify({ content: newNote.trim() })
       });
 
@@ -41,6 +55,11 @@
         const note = await res.json();
         notes = [note, ...notes];
         newNote = "";
+      } else if (res.status === 401) {
+        error = "Session expired. Please log in again.";
+        setTimeout(() => {
+          window.location.href = "/";
+        }, 2000);
       } else {
         error = "Failed to create note";
       }
@@ -51,13 +70,26 @@
     }
   }
 
+  async function handleLogout() {
+    await authStore.logout();
+  }
+
   onMount(async () => {
+    await authStore.initialize();
     await fetchNotes();
   });
 </script>
 
 <div class="notes-container">
-  <h1>My Notes</h1>
+  <div class="header">
+    <h1>My Notes</h1>
+    {#if user}
+      <div class="user-info">
+        <span class="user-name">Welcome, {user.name}!</span>
+        <button onclick={handleLogout} class="btn-logout">Logout</button>
+      </div>
+    {/if}
+  </div>
 
   {#if error}
     <p class="error">{error}</p>
@@ -100,9 +132,44 @@
     padding: 0 1rem;
   }
 
-  h1 {
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  h1 {
+    margin: 0;
     color: #333;
+  }
+
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .user-name {
+    color: #666;
+    font-weight: 500;
+  }
+
+  .btn-logout {
+    padding: 0.5rem 1rem;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .btn-logout:hover {
+    background: #c82333;
   }
 
   .error {
